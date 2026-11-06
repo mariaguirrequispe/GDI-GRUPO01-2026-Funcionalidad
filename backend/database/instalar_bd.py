@@ -1,8 +1,8 @@
 """
 Crea las 27 tablas y carga los datos de ejemplo ejecutando el script SQL
 con el mismo modulo de conexion del aplicativo.
-Requisito: la base de datos repositorios_ucsmya ya debe existir.
-Uso:  python backend/database/instalar_bd.py
+Requisito: la base de datos repositorios_ucsm ya debe existir.
+Uso:  python backend/database/instalar_bd.py o py backend/database/instalar_bd.py
 """
 import os
 import sys

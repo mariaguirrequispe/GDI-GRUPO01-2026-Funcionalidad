@@ -1,6 +1,6 @@
 """
 Prueba de conexion por consola (evidencia para la entrega al 30 %).
-Uso:  python backend/pruebas/prueba_conexion.py
+Uso:  python backend/pruebas/prueba_conexion.py o py backend/pruebas/prueba_conexion.py
 Devuelve codigo 0 si todo esta correcto y 1 si algo falla.
 """
 import os

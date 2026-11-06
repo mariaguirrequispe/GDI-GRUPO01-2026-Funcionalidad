@@ -1,7 +1,7 @@
 """
 Ventana inicial del aplicativo (Tkinter, libreria estandar de Python).
 Muestra el formulario de conexion y el boton "Probar conexion".
-Uso:  python -m fronted.main
+Uso:  python -m frontend.main o py frontend/main.py
 """
 import tkinter as tk
 from tkinter import messagebox, ttk

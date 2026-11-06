@@ -1,10 +1,10 @@
 --- Script SQL necesario para crear la base de datos y sus tablas desde psql shell lineas 2 a 7
 -- 1. Intentar crear la base de datos si no existe (PostgreSQL requiere ejecutar esto fuera de bloques transaccionales)
---SELECT 'CREATE DATABASE base_datos_repositorio' 
---WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'base_datos_repositorio')\gexec
+--SELECT 'CREATE DATABASE repositorios_ucsm' 
+--WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'repositorios_ucsm')\gexec
 
 -- 2. Conectarse automáticamente a la base de datos destino
---\c base_datos_repositorio
+--\c repositorios_ucsm
 
 BEGIN;
 

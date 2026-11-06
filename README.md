@@ -24,9 +24,9 @@ repositorios_ucsm/
 2. Crear la base: `CREATE DATABASE repositorios_ucsm;` (pgAdmin o psql).
 3. `pip install -r backend/requirements.txt`
 4. Copiar `backend/config.ini.example` como `backend/config.ini` y escribir usuario y contrasenia.
-5. `python backend/database/instalar_bd.py`   (crea tablas y datos de prueba)
-6. `python backend/pruebas/prueba_conexion.py` (debe terminar en TODO CORRECTO)
-7. `python -m fronted.main`                   (ventana con boton "Probar conexion")
+5. `python backend/database/instalar_bd.py` o  `py backend/database/instalar_bd.py` (crea tablas y datos de prueba)
+6. `python backend/pruebas/prueba_conexion.py` o `py backend/pruebas/prueba_conexion.py` (debe terminar en TODO CORRECTO)
+7. `python -m frontend.main`  o`py -m frontend.main`                 (ventana con boton "Probar conexion")
 
 En Linux, Tkinter puede requerir `sudo apt install python3-tk`.
 La contrasenia tambien puede darse con la variable de entorno `UCSM_DB_PASSWORD`.
