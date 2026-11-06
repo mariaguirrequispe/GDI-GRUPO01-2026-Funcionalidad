@@ -1,0 +1,3 @@
+# Unico componente externo: el controlador (driver) de PostgreSQL.
+# No es un framework ni un ORM: solo envia el SQL tal cual y devuelve filas.
+psycopg2-binary==2.9.10

@@ -1,0 +1,9 @@
+; Copiar este archivo como config.ini y completar los datos reales.
+; config.ini NO se sube a GitHub (contiene la contrasenia).
+[postgresql]
+host = localhost
+port = 5432
+dbname = repositorios_ucsm
+user = postgres
+password = CAMBIAR_CLAVE
+connect_timeout = 5

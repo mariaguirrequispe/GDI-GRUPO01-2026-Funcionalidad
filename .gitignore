@@ -1,0 +1,32 @@
+backend/config.ini
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+ENV/
+
+# Artefactos de construccion
+build/
+dist/
+*.egg-info/
+
+# Pruebas y herramientas
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Configuracion local y secretos
+.env
+.env.*
+!.env.example
+
+# Logs y archivos del sistema operativo
+*.log
+.DS_Store
+Thumbs.db
