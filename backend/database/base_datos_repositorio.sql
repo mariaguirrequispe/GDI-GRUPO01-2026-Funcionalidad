@@ -1,7 +1,6 @@
 --- Script SQL necesario para crear la base de datos y sus tablas desde psql shell lineas 2 a 7
 -- 1. Intentar crear la base de datos si no existe (PostgreSQL requiere ejecutar esto fuera de bloques transaccionales)
---SELECT 'CREATE DATABASE repositorios_ucsm' 
---WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'repositorios_ucsm')\gexec
+--SELECT 'CREATE DATABASE repositorios_ucsm WITH ENCODING ''UTF-8'' TEMPLATE  template 0 ' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'repositorios_ucsm')\gexec
 
 -- 2. Conectarse automáticamente a la base de datos destino
 --\c repositorios_ucsm
@@ -439,6 +438,429 @@ CREATE UNIQUE INDEX ux_coordinador_correo ON coordinador_repositorios (lower(cor
 
 COMMIT;
 
+BEGIN;
+--Bloque A----Triggers
+-- A.1 Investigador: normaliza correo y escuela (INSERT/UPDATE)
+CREATE OR REPLACE FUNCTION fn_investigador_normalizar() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.correo_elec := lower(btrim(NEW.correo_elec));
+  NEW.escuela_profesional := btrim(NEW.escuela_profesional);
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER trg_investigador_normalizar
+BEFORE INSERT OR UPDATE ON investigador
+FOR EACH ROW EXECUTE FUNCTION fn_investigador_normalizar();
+
+-- A.2 Investigador: no se borra si es inventor; limpia su formato (DELETE)
+CREATE OR REPLACE FUNCTION fn_investigador_antes_borrar() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF EXISTS (SELECT 1
+             FROM formato_investigador fi
+             JOIN formato_patente_investigador fpi ON fpi.n_formato_inv = fi.n_formato_inv
+             WHERE fi.codigo_ucsm = OLD.codigo_ucsm) THEN
+    RAISE EXCEPTION 'No se puede eliminar al investigador %: figura como inventor en una patente',
+      OLD.codigo_ucsm USING ERRCODE = 'restrict_violation';
+  END IF;
+  DELETE FROM formato_investigador WHERE codigo_ucsm = OLD.codigo_ucsm; -- ODS e intereses caen en cascada
+  RETURN OLD;
+END; $$;
+
+CREATE TRIGGER trg_investigador_antes_borrar
+BEFORE DELETE ON investigador
+FOR EACH ROW EXECUTE FUNCTION fn_investigador_antes_borrar();
+
+-- A.3 Patente: toda patente debe tener al menos un inventor (se valida al cerrar la transaccion)
+CREATE OR REPLACE FUNCTION fn_patente_requiere_inventor() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM formato_patente_investigador
+                 WHERE n_formato_pat = NEW.n_formato_pat) THEN
+    RAISE EXCEPTION 'La patente % debe tener al menos un inventor registrado', NEW.n_patente;
+  END IF;
+  RETURN NULL;
+END; $$;
+
+CREATE CONSTRAINT TRIGGER trg_patente_requiere_inventor
+AFTER INSERT ON formato_patente
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION fn_patente_requiere_inventor();
+
+-- A.4 Patente: al borrarla se elimina su formato (inventores, OCDE y vinculos en cascada)
+CREATE OR REPLACE FUNCTION fn_patente_antes_borrar() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  DELETE FROM formato_patente WHERE n_patente = OLD.n_patente;
+  RETURN OLD;
+END; $$;
+
+CREATE TRIGGER trg_patente_antes_borrar
+BEFORE DELETE ON patente
+FOR EACH ROW EXECUTE FUNCTION fn_patente_antes_borrar();
+
+-- A.5 Historico: cada actualizacion es una re-sincronizacion
+CREATE OR REPLACE FUNCTION fn_historico_synced_at() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.synced_at := CURRENT_TIMESTAMP;
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER trg_historico_synced_at
+BEFORE UPDATE ON historico
+FOR EACH ROW EXECUTE FUNCTION fn_historico_synced_at();
+
+--Bloque B---Procedimientos de investigador
+CREATE OR REPLACE PROCEDURE sp_registrar_investigador(
+  p_dni VARCHAR, p_nombres VARCHAR, p_apellido_paterno VARCHAR, p_apellido_materno VARCHAR,
+  p_genero VARCHAR, p_fecha_nacimiento DATE,
+  p_codigo_ucsm BIGINT, p_escuela VARCHAR, p_celular INTEGER, p_correo VARCHAR,
+  p_orcid VARCHAR, p_scopus_id BIGINT, p_link_cti VARCHAR, p_resumen VARCHAR, p_foto VARCHAR,
+  p_coordinador BIGINT, p_ods VARCHAR[], p_intereses VARCHAR[])
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_formato INTEGER;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM coordinador_repositorios
+                 WHERE codigo_ucsm = p_coordinador AND fecha_retiro IS NULL) THEN
+    RAISE EXCEPTION 'El coordinador % no existe o ya fue retirado', p_coordinador;
+  END IF;
+  IF COALESCE(cardinality(p_ods), 0) = 0 THEN
+    RAISE EXCEPTION 'Debe indicar al menos un ODS';
+  END IF;
+
+  INSERT INTO persona (dni, nombres, apellido_paterno, apellido_materno, genero, fecha_nacimiento)
+  VALUES (p_dni, p_nombres, p_apellido_paterno, p_apellido_materno, p_genero, p_fecha_nacimiento)
+  ON CONFLICT (dni) DO NOTHING;
+
+  INSERT INTO investigador (codigo_ucsm, dni, escuela_profesional, n_celular, correo_elec)
+  VALUES (p_codigo_ucsm, p_dni, p_escuela, p_celular, p_correo);
+
+  INSERT INTO formato_investigador (codigo_ucsm, codigo_orcid, scopus_id, link_cti_vitae,
+                                    resumen_academico, foto_perfil, codigo_ucsm_coordinador)
+  VALUES (p_codigo_ucsm, p_orcid, p_scopus_id, p_link_cti, p_resumen, p_foto, p_coordinador)
+  RETURNING n_formato_inv INTO v_formato;
+
+  INSERT INTO formato_inv_ods (n_formato_inv, ods)
+    SELECT DISTINCT v_formato, x FROM unnest(p_ods) AS x;
+  INSERT INTO formato_inv_intereses (n_formato_inv, intereses_invest)
+    SELECT DISTINCT v_formato, x FROM unnest(p_intereses) AS x;
+EXCEPTION
+  WHEN unique_violation THEN
+    RAISE EXCEPTION 'El investigador ya esta registrado (codigo, DNI, ORCID, Scopus ID o CTI Vitae repetido)';
+END; $$;
+
+-- p_ods / p_intereses en NULL = no se modifican; con valores = reemplazan a los anteriores
+CREATE OR REPLACE PROCEDURE sp_modificar_investigador(
+  p_codigo_ucsm BIGINT,
+  p_nombres VARCHAR, p_apellido_paterno VARCHAR, p_apellido_materno VARCHAR,
+  p_genero VARCHAR, p_fecha_nacimiento DATE,
+  p_escuela VARCHAR, p_celular INTEGER, p_correo VARCHAR,
+  p_orcid VARCHAR, p_scopus_id BIGINT, p_link_cti VARCHAR, p_resumen VARCHAR, p_foto VARCHAR,
+  p_ods VARCHAR[], p_intereses VARCHAR[])
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_dni VARCHAR;
+  v_formato INTEGER;
+BEGIN
+  UPDATE investigador
+     SET escuela_profesional = p_escuela, n_celular = p_celular, correo_elec = p_correo
+   WHERE codigo_ucsm = p_codigo_ucsm
+  RETURNING dni INTO v_dni;
+  IF v_dni IS NULL THEN
+    RAISE EXCEPTION 'No existe el investigador %', p_codigo_ucsm;
+  END IF;
+
+  UPDATE persona
+     SET nombres = p_nombres, apellido_paterno = p_apellido_paterno,
+         apellido_materno = p_apellido_materno, genero = p_genero,
+         fecha_nacimiento = p_fecha_nacimiento
+   WHERE dni = v_dni;
+
+  UPDATE formato_investigador
+     SET codigo_orcid = p_orcid, scopus_id = p_scopus_id, link_cti_vitae = p_link_cti,
+         resumen_academico = p_resumen, foto_perfil = p_foto
+   WHERE codigo_ucsm = p_codigo_ucsm
+  RETURNING n_formato_inv INTO v_formato;
+
+  IF p_ods IS NOT NULL THEN
+    IF cardinality(p_ods) = 0 THEN
+      RAISE EXCEPTION 'Debe indicar al menos un ODS';
+    END IF;
+    DELETE FROM formato_inv_ods WHERE n_formato_inv = v_formato;
+    INSERT INTO formato_inv_ods (n_formato_inv, ods)
+      SELECT DISTINCT v_formato, x FROM unnest(p_ods) AS x;
+  END IF;
+
+  IF p_intereses IS NOT NULL THEN
+    DELETE FROM formato_inv_intereses WHERE n_formato_inv = v_formato;
+    INSERT INTO formato_inv_intereses (n_formato_inv, intereses_invest)
+      SELECT DISTINCT v_formato, x FROM unnest(p_intereses) AS x;
+  END IF;
+EXCEPTION
+  WHEN unique_violation THEN
+    RAISE EXCEPTION 'ORCID, Scopus ID o CTI Vitae ya pertenece a otro investigador';
+END; $$;
+
+CREATE OR REPLACE PROCEDURE sp_eliminar_investigador(p_codigo_ucsm BIGINT)
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_dni VARCHAR;
+BEGIN
+  SELECT dni INTO v_dni FROM investigador WHERE codigo_ucsm = p_codigo_ucsm;
+  IF v_dni IS NULL THEN
+    RAISE EXCEPTION 'No existe el investigador %', p_codigo_ucsm;
+  END IF;
+
+  DELETE FROM investigador WHERE codigo_ucsm = p_codigo_ucsm;   -- dispara trg_investigador_antes_borrar
+
+  DELETE FROM persona p                                          -- solo si no es tambien coordinador
+   WHERE p.dni = v_dni
+     AND NOT EXISTS (SELECT 1 FROM coordinador_repositorios c WHERE c.dni = p.dni);
+EXCEPTION
+  WHEN foreign_key_violation THEN
+    RAISE EXCEPTION 'No se puede eliminar al investigador %: aparece en reportes generados', p_codigo_ucsm;
+END; $$;
+
+--Bloque c---Procedimientos de patente 
+CREATE OR REPLACE PROCEDURE sp_registrar_patente(
+  p_n_patente VARCHAR, p_titulo VARCHAR, p_editorial VARCHAR, p_fecha_registro DATE,
+  p_cip VARCHAR, p_pais VARCHAR, p_coordinador BIGINT,
+  p_inventores BIGINT[], p_campos_ocde VARCHAR[], p_objetivos_ocde VARCHAR[])
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_formato   INTEGER;
+  v_filas     BIGINT;
+  v_esperados BIGINT;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM coordinador_repositorios
+                 WHERE codigo_ucsm = p_coordinador AND fecha_retiro IS NULL) THEN
+    RAISE EXCEPTION 'El coordinador % no existe o ya fue retirado', p_coordinador;
+  END IF;
+  IF COALESCE(cardinality(p_inventores), 0) = 0 THEN
+    RAISE EXCEPTION 'La patente debe tener al menos un inventor';
+  END IF;
+  IF COALESCE(cardinality(p_campos_ocde), 0) <> COALESCE(cardinality(p_objetivos_ocde), 0) THEN
+    RAISE EXCEPTION 'Cada campo OCDE debe tener su objetivo OCDE';
+  END IF;
+
+  INSERT INTO patente (n_patente, titulo_patente, editorial, fecha_registro, cip, pais)
+  VALUES (p_n_patente, p_titulo, p_editorial, p_fecha_registro, p_cip, p_pais);
+
+  INSERT INTO formato_patente (n_patente, codigo_ucsm_coordinador)
+  VALUES (p_n_patente, p_coordinador)
+  RETURNING n_formato_pat INTO v_formato;
+
+  INSERT INTO formato_patente_investigador (n_formato_pat, n_formato_inv)
+    SELECT v_formato, fi.n_formato_inv
+    FROM formato_investigador fi
+    WHERE fi.codigo_ucsm = ANY (p_inventores);
+  GET DIAGNOSTICS v_filas = ROW_COUNT;
+
+  SELECT COUNT(DISTINCT x) INTO v_esperados FROM unnest(p_inventores) AS x;
+  IF v_filas <> v_esperados THEN
+    RAISE EXCEPTION 'Uno o mas inventores no estan registrados como investigadores';
+  END IF;
+
+  INSERT INTO formato_paten_inventores (n_formato_pat, inventores)
+    SELECT v_formato, pe.apellido_paterno || ' ' || pe.apellido_materno || ', ' || pe.nombres
+    FROM formato_investigador fi
+    JOIN investigador i ON i.codigo_ucsm = fi.codigo_ucsm
+    JOIN persona pe     ON pe.dni = i.dni
+    WHERE fi.codigo_ucsm = ANY (p_inventores);
+
+  INSERT INTO formato_paten_ocde (n_formato_pat, campo_ocde, objetivos_ocde)
+    SELECT v_formato, t.campo, t.objetivo
+    FROM unnest(p_campos_ocde, p_objetivos_ocde) AS t(campo, objetivo);
+EXCEPTION
+  WHEN unique_violation THEN
+    RAISE EXCEPTION 'La patente % ya esta registrada o repite un campo OCDE', p_n_patente;
+END; $$;
+
+CREATE OR REPLACE PROCEDURE sp_eliminar_patente(p_n_patente VARCHAR)
+LANGUAGE plpgsql AS $$
+BEGIN
+  DELETE FROM patente WHERE n_patente = p_n_patente;   -- dispara trg_patente_antes_borrar
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'No existe la patente %', p_n_patente;
+  END IF;
+END; $$;
+
+--Bloque D---Procedimientos de historico 
+CREATE OR REPLACE PROCEDURE sp_cargar_historico(
+  p_uuid UUID, p_title VARCHAR, p_publication_year INTEGER, p_type VARCHAR,
+  p_volumen INTEGER, p_create_date DATE, p_journal_number VARCHAR, p_create_by VARCHAR,
+  p_version VARCHAR, p_number_of_pages INTEGER, p_modified_by VARCHAR, p_abstract VARCHAR,
+  p_total_contributors INTEGER, p_peer_review BOOLEAN, p_pages VARCHAR,
+  p_type_discriminator VARCHAR, p_bibliographical_note VARCHAR, p_visibility VARCHAR,
+  p_modified_date DATE, p_submission_year INTEGER, p_system_name VARCHAR, p_portal_url VARCHAR,
+  p_sub_title VARCHAR, p_language VARCHAR, p_category VARCHAR,
+  p_coordinador BIGINT, p_fecha_reporte DATE,
+  p_contributors VARCHAR[], p_identifiers VARCHAR[], p_electronic_versions VARCHAR[],
+  p_keywords_groups VARCHAR[], p_publication_status VARCHAR[], p_links JSONB)
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_dia  SMALLINT := EXTRACT(DAY   FROM p_fecha_reporte);
+  v_mes  SMALLINT := EXTRACT(MONTH FROM p_fecha_reporte);
+  v_anio SMALLINT := EXTRACT(YEAR  FROM p_fecha_reporte);
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM coordinador_repositorios
+                 WHERE codigo_ucsm = p_coordinador AND fecha_retiro IS NULL) THEN
+    RAISE EXCEPTION 'El coordinador % no existe o ya fue retirado', p_coordinador;
+  END IF;
+
+  INSERT INTO reporte (dia, mes, anio, codigo_ucsm_coordinador)
+  VALUES (v_dia, v_mes, v_anio, p_coordinador)
+  ON CONFLICT (dia, mes, anio) DO NOTHING;
+
+  INSERT INTO historico (uuid, title, publication_year, type, volumen, create_date, journal_number,
+      create_by, version, number_of_pages, modified_by, abstract, total_number_of_contributors,
+      peer_review, pages, type_discriminator, bibliographical_note, visibility, modified_date,
+      submission_year, system_name, portal_url, sub_title, language, category,
+      dia_reporte, mes_reporte, anio_reporte, codigo_ucsm_coordinador)
+  VALUES (p_uuid, p_title, p_publication_year, p_type, p_volumen, p_create_date, p_journal_number,
+      p_create_by, p_version, p_number_of_pages, p_modified_by, p_abstract, p_total_contributors,
+      p_peer_review, p_pages, p_type_discriminator, p_bibliographical_note, p_visibility, p_modified_date,
+      p_submission_year, p_system_name, p_portal_url, p_sub_title, p_language, p_category,
+      v_dia, v_mes, v_anio, p_coordinador)
+  ON CONFLICT (uuid) DO UPDATE SET
+      title = EXCLUDED.title, publication_year = EXCLUDED.publication_year, type = EXCLUDED.type,
+      volumen = EXCLUDED.volumen, create_date = EXCLUDED.create_date,
+      journal_number = EXCLUDED.journal_number, create_by = EXCLUDED.create_by,
+      version = EXCLUDED.version, number_of_pages = EXCLUDED.number_of_pages,
+      modified_by = EXCLUDED.modified_by, abstract = EXCLUDED.abstract,
+      total_number_of_contributors = EXCLUDED.total_number_of_contributors,
+      peer_review = EXCLUDED.peer_review, pages = EXCLUDED.pages,
+      type_discriminator = EXCLUDED.type_discriminator,
+      bibliographical_note = EXCLUDED.bibliographical_note, visibility = EXCLUDED.visibility,
+      modified_date = EXCLUDED.modified_date, submission_year = EXCLUDED.submission_year,
+      system_name = EXCLUDED.system_name, portal_url = EXCLUDED.portal_url,
+      sub_title = EXCLUDED.sub_title, language = EXCLUDED.language, category = EXCLUDED.category,
+      dia_reporte = EXCLUDED.dia_reporte, mes_reporte = EXCLUDED.mes_reporte,
+      anio_reporte = EXCLUDED.anio_reporte,
+      codigo_ucsm_coordinador = EXCLUDED.codigo_ucsm_coordinador;   -- dispara trg_historico_synced_at
+
+  -- Las tablas hijas se reemplazan por completo
+  DELETE FROM historico_contributors        WHERE uuid = p_uuid;
+  DELETE FROM historico_identifiers         WHERE uuid = p_uuid;
+  DELETE FROM historico_electronic_versions WHERE uuid = p_uuid;
+  DELETE FROM historico_keywords_groups     WHERE uuid = p_uuid;
+  DELETE FROM historico_publication_status  WHERE uuid = p_uuid;
+  DELETE FROM historico_links               WHERE uuid = p_uuid;
+
+  INSERT INTO historico_contributors (uuid, contributors)
+    SELECT DISTINCT p_uuid, x FROM unnest(p_contributors) AS x;
+  INSERT INTO historico_identifiers (uuid, identifiers)
+    SELECT DISTINCT p_uuid, x FROM unnest(p_identifiers) AS x;
+  INSERT INTO historico_electronic_versions (uuid, electronic_versions)
+    SELECT DISTINCT p_uuid, x FROM unnest(p_electronic_versions) AS x;
+  INSERT INTO historico_keywords_groups (uuid, keywords_groups)
+    SELECT DISTINCT p_uuid, x FROM unnest(p_keywords_groups) AS x;
+  INSERT INTO historico_publication_status (uuid, publication_status)
+    SELECT DISTINCT p_uuid, x FROM unnest(p_publication_status) AS x;
+  INSERT INTO historico_links (uuid, pure_id, link_type, url, description)
+    SELECT p_uuid, l.pure_id, l.link_type, l.url, l.description
+    FROM jsonb_to_recordset(COALESCE(p_links, '[]'::jsonb))
+         AS l(pure_id BIGINT, link_type VARCHAR, url VARCHAR, description VARCHAR);
+END; $$;
+
+CREATE OR REPLACE PROCEDURE sp_eliminar_historico(p_uuid UUID)
+LANGUAGE plpgsql AS $$
+BEGIN
+  DELETE FROM historico WHERE uuid = p_uuid;   -- las 6 tablas hijas caen en cascada
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'No existe el registro historico %', p_uuid;
+  END IF;
+END; $$;
+
+--Bloque E--Generar el reporte 
+CREATE OR REPLACE PROCEDURE sp_generar_reporte(p_fecha DATE, p_coordinador BIGINT)
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_dia  SMALLINT := EXTRACT(DAY   FROM p_fecha);
+  v_mes  SMALLINT := EXTRACT(MONTH FROM p_fecha);
+  v_anio SMALLINT := EXTRACT(YEAR  FROM p_fecha);
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM coordinador_repositorios
+                 WHERE codigo_ucsm = p_coordinador AND fecha_retiro IS NULL) THEN
+    RAISE EXCEPTION 'El coordinador % no existe o ya fue retirado', p_coordinador;
+  END IF;
+
+  INSERT INTO reporte (dia, mes, anio, codigo_ucsm_coordinador)
+  VALUES (v_dia, v_mes, v_anio, p_coordinador)
+  ON CONFLICT (dia, mes, anio) DO UPDATE
+    SET codigo_ucsm_coordinador = EXCLUDED.codigo_ucsm_coordinador;
+
+  DELETE FROM total_publicaciones     WHERE dia = v_dia AND mes = v_mes AND anio = v_anio;
+  DELETE FROM total_investigadores    WHERE dia = v_dia AND mes = v_mes AND anio = v_anio;
+  DELETE FROM cantidad_escuelas_prof  WHERE dia = v_dia AND mes = v_mes AND anio = v_anio;
+  DELETE FROM cantidad_ods_vinculados WHERE dia = v_dia AND mes = v_mes AND anio = v_anio;
+  DELETE FROM top_escu_invest         WHERE dia = v_dia AND mes = v_mes AND anio = v_anio;
+  DELETE FROM rankings_ods            WHERE dia = v_dia AND mes = v_mes AND anio = v_anio;
+  DELETE FROM distribuciones_ods      WHERE dia = v_dia AND mes = v_mes AND anio = v_anio;
+  DELETE FROM tops_escuelas           WHERE dia = v_dia AND mes = v_mes AND anio = v_anio;
+
+  INSERT INTO total_publicaciones (dia, mes, anio, publicacion)
+    SELECT DISTINCT v_dia, v_mes, v_anio, h.title FROM historico h;
+
+  INSERT INTO total_investigadores (dia, mes, anio, investigador)
+    SELECT v_dia, v_mes, v_anio, i.codigo_ucsm FROM investigador i;
+
+  INSERT INTO cantidad_escuelas_prof (dia, mes, anio, escuelas_prof)
+    SELECT DISTINCT v_dia, v_mes, v_anio, i.escuela_profesional FROM investigador i;
+
+  INSERT INTO cantidad_ods_vinculados (dia, mes, anio, ods_vinc)
+    SELECT DISTINCT v_dia, v_mes, v_anio, (substring(o.ods FROM '^ODS ([0-9]+):'))::SMALLINT
+    FROM formato_inv_ods o;
+
+  -- Top 5 de ODS: "1: ODS 9"
+  WITH conteo AS (
+    SELECT substring(ods FROM '^ODS [0-9]+') AS ods_nombre, COUNT(*) AS n
+    FROM formato_inv_ods GROUP BY 1 ORDER BY n DESC, 1 LIMIT 5)
+  INSERT INTO rankings_ods (dia, mes, anio, ranking_ods)
+    SELECT v_dia, v_mes, v_anio,
+           (ROW_NUMBER() OVER (ORDER BY n DESC, ods_nombre))::TEXT || ': ' || ods_nombre
+    FROM conteo;
+
+  -- Distribucion porcentual: "ODS 9: 45%"
+  WITH conteo AS (
+    SELECT substring(ods FROM '^ODS [0-9]+') AS ods_nombre, COUNT(*) AS n
+    FROM formato_inv_ods GROUP BY 1)
+  INSERT INTO distribuciones_ods (dia, mes, anio, distribucion_ods)
+    SELECT v_dia, v_mes, v_anio,
+           ods_nombre || ': ' || (ROUND(100.0 * n / SUM(n) OVER (), 0))::INT::TEXT || '%'
+    FROM conteo;
+
+  -- Top 3 de escuelas con mas investigadores
+  INSERT INTO tops_escuelas (dia, mes, anio, top_escuelas)
+    SELECT v_dia, v_mes, v_anio, t.escuela
+    FROM (SELECT escuela_profesional AS escuela
+          FROM investigador
+          GROUP BY escuela_profesional
+          ORDER BY COUNT(*) DESC, escuela_profesional
+          LIMIT 3) t;
+
+  -- Investigador con mas publicaciones por escuela (cruza autores con persona por nombre)
+  INSERT INTO top_escu_invest (dia, mes, anio, top_escu_invest)
+    SELECT v_dia, v_mes, v_anio, x.nombre || ' (' || x.escuela || ')'
+    FROM (
+      SELECT DISTINCT ON (i.escuela_profesional)
+             pe.apellido_paterno || ' ' || pe.apellido_materno || ', ' || pe.nombres AS nombre,
+             i.escuela_profesional AS escuela
+      FROM investigador i
+      JOIN persona pe ON pe.dni = i.dni
+      JOIN historico_contributors hc
+           ON hc.contributors = pe.apellido_paterno || ' ' || pe.apellido_materno || ', ' || pe.nombres
+      GROUP BY i.escuela_profesional, i.codigo_ucsm,
+               pe.apellido_paterno, pe.apellido_materno, pe.nombres
+      ORDER BY i.escuela_profesional, COUNT(*) DESC, i.codigo_ucsm
+    ) x;
+END; $$;
+
+COMMIT;
+
 
 BEGIN;
 
@@ -555,7 +977,11 @@ INSERT INTO historico (uuid, title, publication_year, synced_at, type, volumen, 
 INSERT INTO historico_contributors (uuid, contributors) VALUES
 ('00613c8a-a1e6-4080-91db-3bf9b426114f', 'Mokochinski, João Benhur'),
 ('00613c8a-a1e6-4080-91db-3bf9b426114f', 'Aguirre Quispe, Rosa María'),
-('11724d9b-b2f7-5191-82ec-4cf0c537225e', 'Bruno Torres, Ana Paula');
+('11724d9b-b2f7-5191-82ec-4cf0c537225e', 'Bruno Torres, Ana Paula'),
+('11724d9b-b2f7-5191-82ec-4cf0c537225e', 'Vera Cáceres, María del Carmen'),
+('11724d9b-b2f7-5191-82ec-4cf0c537225e', 'Smith, John'),
+('22835e0c-c3f8-6202-93fd-5fa1d648336a', 'Medina Vargas, Jorge Luis'),
+('22835e0c-c3f8-6202-93fd-5fa1d648336a', 'Aguirre Quispe, Rosa María');
 
 INSERT INTO historico_identifiers (uuid, identifiers) VALUES
 ('00613c8a-a1e6-4080-91db-3bf9b426114f', '84930270945 (Scopus)'),
@@ -626,9 +1052,7 @@ INSERT INTO tops_escuelas (dia, mes, anio, top_escuelas) VALUES
 (28, 2, 2026, 'Ingeniería Industrial'),
 (31, 3, 2026, 'Ciencia de la Computación');
 
---------------------------------------------------------------------------------
--- 3. CONSULTAS SQL
---------------------------------------------------------------------------------
+
 
 COMMIT;
 
@@ -708,3 +1132,39 @@ SELECT pais, editorial, COUNT(*) AS total_patentes
 FROM patente
 GROUP BY pais, editorial
 ORDER BY total_patentes DESC;
+
+-- 13. Investigadores con sus ODS vinculados
+SELECT i.codigo_ucsm,
+       p.apellido_paterno || ' ' || p.apellido_materno || ', ' || p.nombres AS investigador,
+       i.escuela_profesional,
+       string_agg(o.ods, ' | ' ORDER BY o.ods) AS ods_vinculados
+FROM investigador i
+JOIN persona p ON p.dni = i.dni
+JOIN formato_investigador fi ON fi.codigo_ucsm = i.codigo_ucsm
+JOIN formato_inv_ods o ON o.n_formato_inv = fi.n_formato_inv
+GROUP BY i.codigo_ucsm, p.apellido_paterno, p.apellido_materno, p.nombres, i.escuela_profesional
+ORDER BY investigador;
+
+-- 14. Patentes con sus inventores registrados
+SELECT pa.n_patente, pa.titulo_patente, pa.pais,
+       p.apellido_paterno || ' ' || p.apellido_materno || ', ' || p.nombres AS inventor,
+       i.escuela_profesional
+FROM patente pa
+JOIN formato_patente fp ON fp.n_patente = pa.n_patente
+JOIN formato_patente_investigador fpi ON fpi.n_formato_pat = fp.n_formato_pat
+JOIN formato_investigador fi ON fi.n_formato_inv = fpi.n_formato_inv
+JOIN investigador i ON i.codigo_ucsm = fi.codigo_ucsm
+JOIN persona p ON p.dni = i.dni
+ORDER BY pa.fecha_registro DESC, pa.n_patente;
+
+-- 15. Formatos de investigador y coordinador que los valida
+SELECT fi.n_formato_inv,
+       pinv.apellido_paterno || ' ' || pinv.apellido_materno || ', ' || pinv.nombres AS investigador,
+       pcoo.apellido_paterno || ' ' || pcoo.apellido_materno || ', ' || pcoo.nombres AS coordinador_validador,
+       c.funcion
+FROM formato_investigador fi
+JOIN investigador i ON i.codigo_ucsm = fi.codigo_ucsm
+JOIN persona pinv ON pinv.dni = i.dni
+JOIN coordinador_repositorios c ON c.codigo_ucsm = fi.codigo_ucsm_coordinador
+JOIN persona pcoo ON pcoo.dni = c.dni
+ORDER BY coordinador_validador, investigador;
