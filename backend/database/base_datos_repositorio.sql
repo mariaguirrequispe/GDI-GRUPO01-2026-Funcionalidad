@@ -6,6 +6,13 @@
 --\c repositorios_ucsm
 
 BEGIN;
+DROP TABLE IF EXISTS tops_escuelas, distribuciones_ods, rankings_ods, top_escu_invest,
+  cantidad_ods_vinculados, cantidad_escuelas_prof, total_investigadores, total_publicaciones,
+  historico_publication_status, historico_keywords_groups, historico_electronic_versions,
+  historico_links, historico_identifiers, historico_contributors, historico, reporte,
+  formato_patente_investigador, formato_paten_ocde, formato_paten_inventores, formato_patente,
+  patente, formato_inv_intereses, formato_inv_ods, formato_investigador,
+  coordinador_repositorios, investigador, persona CASCADE;
 
 -- 1.2 Tablas -------------------------------------------------------------------
 CREATE TABLE persona (
@@ -688,6 +695,71 @@ BEGIN
   END IF;
 END; $$;
 
+CREATE OR REPLACE PROCEDURE sp_modificar_patente(
+    p_n_patente      VARCHAR,
+    p_titulo         VARCHAR,
+    p_editorial      VARCHAR,
+    p_fecha_registro DATE,
+    p_cip            VARCHAR,
+    p_pais           VARCHAR,
+    p_inventores     BIGINT[],     -- NULL = no cambia los inventores
+    p_campos_ocde    VARCHAR[],    -- NULL = no cambia la clasificacion OCDE
+    p_objetivos_ocde VARCHAR[])
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_formato   INTEGER;
+    v_filas     BIGINT;
+    v_esperados BIGINT;
+BEGIN
+    UPDATE patente
+       SET titulo_patente = p_titulo, editorial = p_editorial,
+           fecha_registro = p_fecha_registro, cip = p_cip, pais = p_pais
+     WHERE n_patente = p_n_patente;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'No existe la patente %', p_n_patente;
+    END IF;
+
+    SELECT n_formato_pat INTO v_formato FROM formato_patente WHERE n_patente = p_n_patente;
+
+    IF p_inventores IS NOT NULL THEN
+        IF COALESCE(cardinality(p_inventores), 0) = 0 THEN
+            RAISE EXCEPTION 'La patente debe tener al menos un inventor';
+        END IF;
+        DELETE FROM formato_patente_investigador WHERE n_formato_pat = v_formato;
+        INSERT INTO formato_patente_investigador (n_formato_pat, n_formato_inv)
+        SELECT v_formato, fi.n_formato_inv
+          FROM formato_investigador fi
+         WHERE fi.codigo_ucsm = ANY (p_inventores);
+        GET DIAGNOSTICS v_filas = ROW_COUNT;
+        SELECT COUNT(DISTINCT x) INTO v_esperados FROM unnest(p_inventores) AS x;
+        IF v_filas <> v_esperados THEN
+            RAISE EXCEPTION 'Uno o mas inventores no estan registrados como investigadores';
+        END IF;
+        DELETE FROM formato_paten_inventores WHERE n_formato_pat = v_formato;
+        INSERT INTO formato_paten_inventores (n_formato_pat, inventores)
+        SELECT DISTINCT v_formato,
+               pe.apellido_paterno || ' ' || pe.apellido_materno || ', ' || pe.nombres
+          FROM formato_investigador fi
+          JOIN investigador i ON i.codigo_ucsm = fi.codigo_ucsm
+          JOIN persona pe     ON pe.dni = i.dni
+         WHERE fi.codigo_ucsm = ANY (p_inventores);
+    END IF;
+
+    IF p_campos_ocde IS NOT NULL THEN
+        IF COALESCE(cardinality(p_campos_ocde), 0) <> COALESCE(cardinality(p_objetivos_ocde), 0) THEN
+            RAISE EXCEPTION 'Cada campo OCDE debe tener su objetivo';
+        END IF;
+        DELETE FROM formato_paten_ocde WHERE n_formato_pat = v_formato;
+        INSERT INTO formato_paten_ocde (n_formato_pat, campo_ocde, objetivos_ocde)
+        SELECT v_formato, t.campo, t.objetivo
+          FROM unnest(p_campos_ocde, p_objetivos_ocde) AS t(campo, objetivo);
+    END IF;
+EXCEPTION
+    WHEN unique_violation THEN
+        RAISE EXCEPTION 'La patente repite un campo OCDE';
+END;
+$$;
+
 --Bloque D---Procedimientos de historico 
 CREATE OR REPLACE PROCEDURE sp_cargar_historico(
   p_uuid UUID, p_title VARCHAR, p_publication_year INTEGER, p_type VARCHAR,
@@ -1053,7 +1125,8 @@ INSERT INTO tops_escuelas (dia, mes, anio, top_escuelas) VALUES
 (31, 3, 2026, 'Ciencia de la Computación');
 
 
-
+UPDATE coordinador_repositorios SET contrasenia = 'pbkdf2_sha256$200000$eb55f2f85197dbc7147cbe4c1e7e1aa3$c10c56a8ae657dd0e595841689e58ece6222d2c1c821b90b29c9f41a890c0350' WHERE codigo_ucsm = 1000123434;
+UPDATE coordinador_repositorios SET contrasenia = 'pbkdf2_sha256$200000$bf6428ac150d8d965f620d7281787567$b6ffd9c9878d147980cf142f894be9f92496b216962aabf8999f6cd1a9a71e1d' WHERE codigo_ucsm = 1000567890;
 COMMIT;
 
 --------------------------------------------------------------------------------
