@@ -5,7 +5,7 @@ from tkinter import messagebox, ttk
 from backend.src.repositorios import investigadores
 from backend.src.repositorios.catalogos import GENEROS, ODS
 
-from .widgets import Formulario, Tabla, ejecutar_seguro
+from .widgets import Encabezado, Formulario, Tabla, Tarjeta, ejecutar_seguro
 
 CAMPOS = [
     ("dni", "DNI", "entry", None),
@@ -24,28 +24,31 @@ CAMPOS = [
     ("foto", "Foto de perfil (.jpg/.png)", "entry", None),
     ("resumen", "Resumen académico", "texto", 3),
     ("ods", "ODS (selección múltiple)", "lista", [(o, o) for o in ODS]),
-    ("intereses", "Intereses (separados por coma)", "entry", None),
+    ("intereses", "Intereses de investigación (separados por coma)", "entry", None),
 ]
 BLOQUEADOS_AL_EDITAR = ("dni", "codigo_ucsm")
 
 
 class VistaInvestigadores(ttk.Frame):
     def __init__(self, master, coordinador):
-        super().__init__(master, padding=8)
+        super().__init__(master, padding=(10, 8))
         self.coordinador = coordinador
         self.editando = None                    # codigo UCSM en edicion, o None si es nuevo
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+        Encabezado(self, "Formato de registro de investigador",
+                   "Registre, modifique o elimine los investigadores de la universidad.").grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         izquierda = ttk.Frame(self)
-        izquierda.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        izquierda.grid(row=1, column=0, sticky="nsew", padx=(0, 12))
         izquierda.rowconfigure(1, weight=1)
         izquierda.columnconfigure(0, weight=1)
         barra = ttk.Frame(izquierda)
-        barra.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        barra.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         ttk.Label(barra, text="Buscar:").pack(side="left")
-        self.busqueda = ttk.Entry(barra, width=28)
-        self.busqueda.pack(side="left", padx=6)
+        self.busqueda = ttk.Entry(barra, width=30)
+        self.busqueda.pack(side="left", padx=8)
         self.busqueda.bind("<Return>", lambda _e: self.refrescar())
         ttk.Button(barra, text="Buscar", command=self.refrescar).pack(side="left")
         self.tabla = Tabla(izquierda, [("codigo", "Código", 90), ("nombre", "Investigador", 230),
@@ -54,18 +57,16 @@ class VistaInvestigadores(ttk.Frame):
         self.tabla.grid(row=1, column=0, sticky="nsew")
         self.tabla.arbol.bind("<<TreeviewSelect>>", self._al_seleccionar)
 
-        derecha = ttk.Frame(self, padding=8, relief="groove", borderwidth=2)
-        derecha.grid(row=0, column=1, sticky="ns")
-        self.titulo = tk.StringVar()
-        ttk.Label(derecha, textvariable=self.titulo, font=("Helvetica", 11, "bold")).pack(
-            anchor="w", pady=(0, 8))
-        self.form = Formulario(derecha, CAMPOS)
+        self.panel = Tarjeta(self, "")
+        self.panel.grid(row=1, column=1, sticky="ns")
+        self.form = Formulario(self.panel.cuerpo, CAMPOS)
         self.form.pack()
-        botones = ttk.Frame(derecha)
-        botones.pack(pady=(10, 0))
-        ttk.Button(botones, text="Nuevo", command=self.nuevo).pack(side="left", padx=4)
-        ttk.Button(botones, text="Guardar", command=self.guardar).pack(side="left", padx=4)
-        ttk.Button(botones, text="Eliminar", command=self.eliminar).pack(side="left", padx=4)
+        botones = ttk.Frame(self.panel.cuerpo, style="Tarjeta.TFrame")
+        botones.pack(fill="x", pady=(12, 0))
+        ttk.Button(botones, text="Nuevo", command=self.nuevo).pack(side="left")
+        ttk.Button(botones, text="Eliminar", style="Peligro.TButton", command=self.eliminar).pack(side="right")
+        ttk.Button(botones, text="Guardar", style="Primario.TButton", command=self.guardar).pack(
+            side="right", padx=8)
         self.nuevo()
 
     def refrescar(self):
@@ -81,7 +82,7 @@ class VistaInvestigadores(ttk.Frame):
         self.form.bloquear(BLOQUEADOS_AL_EDITAR, False)
         self.form.limpiar()
         self.tabla.deseleccionar()
-        self.titulo.set(" Nuevo investigador ")
+        self.panel.titulo.set("Nuevo investigador")
 
     def _al_seleccionar(self, _evento=None):
         codigo = self.tabla.seleccionada()
@@ -93,7 +94,7 @@ class VistaInvestigadores(ttk.Frame):
             self.form.poner(datos)
             self.form.bloquear(BLOQUEADOS_AL_EDITAR, True)
             self.editando = int(codigo)
-            self.titulo.set(f" Editando investigador {codigo} ")
+            self.panel.titulo.set(f"Editando investigador {codigo}")
 
     def guardar(self):
         datos = self.form.valores()

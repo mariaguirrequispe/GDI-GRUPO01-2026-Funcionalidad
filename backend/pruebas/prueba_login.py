@@ -3,9 +3,10 @@ Prueba del inicio de sesion del coordinador (pagina de inicio).
 Uso:  python backend/pruebas/prueba_login.py
 Requiere haber ejecutado instalar_bd.py (carga las contrasenias de ejemplo).
 """
-from _comun import COD_RET, COORD, DNI_RET, esperar_error, limpiar, paso, probar, terminar
+from _comun import (COD_RET, COORD, DNI_RET, escalar, esperar_error, limpiar, paso, probar,
+                    terminar)
 from src.db.conexion import ejecutar_sentencia
-from backend.src import coordinadores
+from src.repositorios import coordinadores
 from src.seguridad import generar_hash
 
 
@@ -13,19 +14,21 @@ def main():
     print("=== Prueba de login del coordinador ===")
     limpiar()
     try:
-        ok, c = probar("Login correcto: carlos.paredes@ucsm.edu.pe",
-                       coordinadores.autenticar, "carlos.paredes@ucsm.edu.pe", "Carlos2026!")
+        ok, c = probar("Login correcto: jangulo@ucsm.edu.pe",
+                       coordinadores.autenticar, "jangulo@ucsm.edu.pe", "Angulo2026!")
         if ok:
-            paso(c["codigo_ucsm"] == COORD and "Paredes" in c["nombre"] and "contrasenia" not in c,
+            paso(c["codigo_ucsm"] == COORD and "Angulo" in c["nombre"] and "contrasenia" not in c,
                  f"Devuelve los datos del coordinador sin la contrasenia ({c['nombre']})")
+            paso(c["funcion"] == "Coordinador de repositorios",
+                 f"Funcion registrada: {c['funcion']}")
         probar("Login sin distinguir mayusculas en el correo",
-               coordinadores.autenticar, "CARLOS.PAREDES@UCSM.EDU.PE", "Carlos2026!")
-        probar("Login correcto: luis.gomez@ucsm.edu.pe",
-               coordinadores.autenticar, "luis.gomez@ucsm.edu.pe", "Luis2026!")
+               coordinadores.autenticar, "JANGULO@UCSM.EDU.PE", "Angulo2026!")
         esperar_error("Contrasenia incorrecta", coordinadores.autenticar,
-                      "carlos.paredes@ucsm.edu.pe", "mala", contiene="incorrectos")
+                      "jangulo@ucsm.edu.pe", "mala", contiene="incorrectos")
+        esperar_error("La contrasenia distingue mayusculas", coordinadores.autenticar,
+                      "jangulo@ucsm.edu.pe", "angulo2026!", contiene="incorrectos")
         esperar_error("Correo inexistente", coordinadores.autenticar,
-                      "nadie@ucsm.edu.pe", "Carlos2026!", contiene="incorrectos")
+                      "nadie@ucsm.edu.pe", "Angulo2026!", contiene="incorrectos")
         esperar_error("Campos vacios", coordinadores.autenticar, "", "", contiene="ingrese")
 
         # Coordinador retirado: con la clave correcta igual no puede entrar
@@ -41,6 +44,8 @@ def main():
         esperar_error("Coordinador retirado no puede ingresar", coordinadores.autenticar,
                       "retirado.prueba@ucsm.edu.pe", "Retirado1!", contiene="retirado")
 
+        paso(escalar("SELECT COUNT(*) FROM coordinador_repositorios WHERE fecha_retiro IS NULL") == 1,
+             "Hay un unico coordinador en funciones (Javier Fernando Angulo Osorio)")
         ok, r = probar("Resumen para la pagina de inicio", coordinadores.resumen, COORD)
         if ok:
             paso(all(isinstance(r[k], int) for k in
@@ -54,3 +59,4 @@ def main():
 if __name__ == "__main__":
     import sys
     sys.exit(main())
+    

@@ -22,6 +22,10 @@ def crud_investigador():
             "scopus_id": 9900000003, "link_cti": "https://ctivitae.concytec.gob.pe/x/99999903"}
     esperar_error("Registrar con celular invalido (CHECK)", investigadores.registrar,
                   {**otro, "celular": 123456789}, COORD, contiene="celular")
+    esperar_error("Registrar sin intereses de investigacion (obligatorios)", investigadores.registrar,
+                  {**otro, "intereses": ""}, COORD, contiene="interés")
+    esperar_error("Registrar sin ODS (obligatorio)", investigadores.registrar,
+                  {**otro, "ods": []}, COORD, contiene="ODS")
     esperar_error("Registrar con coordinador inexistente", investigadores.registrar, otro, 1099999999,
                   contiene="coordinador")
     esperar_error("Registrar con DNI no numerico", investigadores.registrar,
@@ -127,3 +131,4 @@ def main():
 if __name__ == "__main__":
     import sys
     sys.exit(main())
+

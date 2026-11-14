@@ -537,6 +537,9 @@ BEGIN
   IF COALESCE(cardinality(p_ods), 0) = 0 THEN
     RAISE EXCEPTION 'Debe indicar al menos un ODS';
   END IF;
+  IF COALESCE(cardinality(p_intereses), 0) = 0 THEN
+    RAISE EXCEPTION 'Debe indicar al menos un interes de investigacion';
+  END IF;
 
   INSERT INTO persona (dni, nombres, apellido_paterno, apellido_materno, genero, fecha_nacimiento)
   VALUES (p_dni, p_nombres, p_apellido_paterno, p_apellido_materno, p_genero, p_fecha_nacimiento)
@@ -602,6 +605,9 @@ BEGIN
   END IF;
 
   IF p_intereses IS NOT NULL THEN
+    IF cardinality(p_intereses) = 0 THEN
+      RAISE EXCEPTION 'Debe indicar al menos un interes de investigacion';
+    END IF;
     DELETE FROM formato_inv_intereses WHERE n_formato_inv = v_formato;
     INSERT INTO formato_inv_intereses (n_formato_inv, intereses_invest)
       SELECT DISTINCT v_formato, x FROM unnest(p_intereses) AS x;
@@ -938,11 +944,10 @@ BEGIN;
 
 INSERT INTO persona (dni, nombres, apellido_paterno, apellido_materno, genero, fecha_nacimiento) VALUES
 ('74943952', 'Rosa María', 'Aguirre', 'Quispe', 'Femenino', '1990-04-15'),
-('45871236', 'Carlos Alberto', 'Paredes', 'Salas', 'Masculino', '1985-08-22'),
 ('71234567', 'Ana Paula', 'Bruno', 'Torres', 'Femenino', '1992-11-05'),
-('41234567', 'Luis Miguel', 'Gómez', 'Ramos', 'Masculino', '1980-03-10'),
 ('73456789', 'María del Carmen', 'Vera', 'Cáceres', 'Femenino', '1995-07-19'),
-('46789012', 'Jorge Luis', 'Medina', 'Vargas', 'Masculino', '1988-12-01');
+('46789012', 'Jorge Luis', 'Medina', 'Vargas', 'Masculino', '1988-12-01'),
+('87654321', 'Javier Fernando', 'Angulo', 'Osorio', 'Masculino', '1980-01-01');
 
 INSERT INTO investigador (codigo_ucsm, dni, escuela_profesional, n_celular, correo_elec) VALUES
 (2020123434, '74943952', 'Ingeniería de Sistemas', 987654321, 'rosa.aguirre@ucsm.edu.pe'),
@@ -951,30 +956,27 @@ INSERT INTO investigador (codigo_ucsm, dni, escuela_profesional, n_celular, corr
 (2018901234, '46789012', 'Ciencia de la Computación', 934567890, 'jorge.medina@ucsm.edu.pe');
 
 INSERT INTO coordinador_repositorios (codigo_ucsm, dni, fecha_ocupacion_puesto, correo_electronico, contrasenia, fecha_retiro, funcion, direccion_adscrita) VALUES
-(1000123434, '45871236', '2025-12-01', 'carlos.paredes@ucsm.edu.pe',
- '$2y$10$e8h6X9v2q5x8K9v2q5x8K9v2q5x8K9v2q5x8K9v2q5x8K', NULL,
- 'Coordinador General de Repositorios', 'Dirección de Investigación'),
-(1000567890, '41234567', '2024-01-15', 'luis.gomez@ucsm.edu.pe',
- '$2y$10$f9i7Y0w3r6y9L0w3r6y9L0w3r6y9L0w3r6y9L0w3r6y9L0w3r6y9L', NULL,
- 'Coordinador de Seguimiento Bibliográfico', 'Vicerrectorado de Investigación');
+(1000123498, '87654321', '2023-03-01', 'jangulo@ucsm.edu.pe',
+ 'pbkdf2_sha256$200000$48f0c1e463127c67dfcaae2e34a9a88f$aa62db76745d29764cd9e1ed042b47a65e76244bc12a0fe5e9011b860686bee5', NULL,
+ 'Coordinador de repositorios', 'Dirección de Investigación');
 
 INSERT INTO formato_investigador (codigo_ucsm, codigo_orcid, scopus_id, link_cti_vitae, resumen_academico, foto_perfil, codigo_ucsm_coordinador) VALUES
 (2020123434, '0000-0002-1825-009X', 57193456789,
  'https://ctivitae.concytec.gob.pe/appCTIVitae/#/detallesCV/74943952',
  'Especialista en desarrollo de software, bases de datos y sistemas de información.',
- 'rosa_aguirre.jpg', 1000123434),
+ 'rosa_aguirre.jpg', 1000123498),
 (2019567890, '0000-0001-2345-6789', 57284567890,
  'https://ctivitae.concytec.gob.pe/appCTIVitae/#/detallesCV/71234567',
  'Investigadora en optimización de procesos industriales y cadena de suministros.',
- 'ana_bruno.jpg', 1000123434),
+ 'ana_bruno.jpg', 1000123498),
 (2021345678, '0000-0003-4567-8901', 57395678901,
  'https://ctivitae.concytec.gob.pe/appCTIVitae/#/detallesCV/73456789',
  'Estudios orientados a la gestión empresarial y sostenibilidad económica.',
- 'maria_vera.jpg', 1000567890),
+ 'maria_vera.jpg', 1000123498),
 (2018901234, '0000-0004-5678-9012', 57406789012,
  'https://ctivitae.concytec.gob.pe/appCTIVitae/#/detallesCV/46789012',
  'Investigación en inteligencia artificial, redes neuronales y machine learning.',
- 'jorge_medina.jpg', 1000567890);
+ 'jorge_medina.jpg', 1000123498);
 
 INSERT INTO formato_inv_ods (n_formato_inv, ods) VALUES
 (1, 'ODS 9: Industria, innovación e infraestructura'),
@@ -996,9 +998,9 @@ INSERT INTO patente (n_patente, titulo_patente, editorial, fecha_registro, cip, 
 ('PE-345678', 'Algoritmo de encriptación híbrida segura para repositorios', 'INDECOPI', '2025-01-10', 'H04L 9/00', 'Perú');
 
 INSERT INTO formato_patente (n_patente, codigo_ucsm_coordinador) VALUES
-('PE-123456', 1000123434),
-('PE-234567', 1000123434),
-('PE-345678', 1000567890);
+('PE-123456', 1000123498),
+('PE-234567', 1000123498),
+('PE-345678', 1000123498);
 
 INSERT INTO formato_paten_inventores (n_formato_pat, inventores) VALUES
 (1, 'Aguirre Quispe, Rosa María'),
@@ -1016,9 +1018,9 @@ INSERT INTO formato_patente_investigador (n_formato_pat, n_formato_inv) VALUES
 (3, 4);
 
 INSERT INTO reporte (dia, mes, anio, codigo_ucsm_coordinador) VALUES
-(31, 1, 2026, 1000123434),
-(28, 2, 2026, 1000123434),
-(31, 3, 2026, 1000567890);
+(31, 1, 2026, 1000123498),
+(28, 2, 2026, 1000123498),
+(31, 3, 2026, 1000123498);
 
 INSERT INTO historico (uuid, title, publication_year, synced_at, type, volumen, create_date, journal_number, create_by, version, number_of_pages, modified_by, abstract, total_number_of_contributors, peer_review, pages, type_discriminator, bibliographical_note, visibility, modified_date, submission_year, system_name, portal_url, sub_title, language, category, dia_reporte, mes_reporte, anio_reporte, codigo_ucsm_coordinador) VALUES
 ('00613c8a-a1e6-4080-91db-3bf9b426114f',
@@ -1028,7 +1030,7 @@ INSERT INTO historico (uuid, title, publication_year, synced_at, type, volumen, 
  'Resumen sobre el rendimiento de PostgreSQL y MySQL.', 2, TRUE, '221-229',
  'ContributionToJournal', 'Publisher Copyright: © 2025 Wiley', 'FREE', '2026-01-10',
  2025, 'ResearchOutput', 'https://repositorio.ucsm.edu.pe/handle/123456789/1',
- 'Estudio de caso en la UCSM', 'English', 'Research', 31, 1, 2026, 1000123434),
+ 'Estudio de caso en la UCSM', 'English', 'Research', 31, 1, 2026, 1000123498),
 ('11724d9b-b2f7-5191-82ec-4cf0c537225e',
  'Optimización de cadenas de suministro mediante modelos estocásticos',
  2025, '2026-02-28 10:30:00', 'Article', 12, '2025-08-14', '1', 'sync_user',
@@ -1036,7 +1038,7 @@ INSERT INTO historico (uuid, title, publication_year, synced_at, type, volumen, 
  'Evaluación de procesos industriales.', 3, TRUE, '45-60',
  'ContributionToJournal', 'Publisher Copyright: © 2025 Elsevier', 'FREE', '2026-02-15',
  2025, 'ResearchOutput', 'https://repositorio.ucsm.edu.pe/handle/123456789/2',
- 'Enfoque logístico regional', 'English', 'Research', 28, 2, 2026, 1000123434),
+ 'Enfoque logístico regional', 'English', 'Research', 28, 2, 2026, 1000123498),
 ('22835e0c-c3f8-6202-93fd-5fa1d648336a',
  'Aplicación de redes neuronales profundas en la clasificación de datos',
  2026, '2026-03-31 11:15:00', 'Conference paper', NULL, '2026-01-10', NULL, 'sync_user',
@@ -1044,7 +1046,7 @@ INSERT INTO historico (uuid, title, publication_year, synced_at, type, volumen, 
  'Propuesta de modelos basados en Deep Learning.', 2, TRUE, '100-110',
  'ContributionToConference', 'Conference Proceedings IEEE', 'FREE', '2026-03-20',
  2026, 'ResearchOutput', 'https://repositorio.ucsm.edu.pe/handle/123456789/3',
- 'Modelo predictivo', 'English', 'Research', 31, 3, 2026, 1000567890);
+ 'Modelo predictivo', 'English', 'Research', 31, 3, 2026, 1000123498);
 
 INSERT INTO historico_contributors (uuid, contributors) VALUES
 ('00613c8a-a1e6-4080-91db-3bf9b426114f', 'Mokochinski, João Benhur'),
@@ -1125,10 +1127,8 @@ INSERT INTO tops_escuelas (dia, mes, anio, top_escuelas) VALUES
 (31, 3, 2026, 'Ciencia de la Computación');
 
 
-UPDATE coordinador_repositorios SET contrasenia = 'pbkdf2_sha256$200000$eb55f2f85197dbc7147cbe4c1e7e1aa3$c10c56a8ae657dd0e595841689e58ece6222d2c1c821b90b29c9f41a890c0350' WHERE codigo_ucsm = 1000123434;
-UPDATE coordinador_repositorios SET contrasenia = 'pbkdf2_sha256$200000$bf6428ac150d8d965f620d7281787567$b6ffd9c9878d147980cf142f894be9f92496b216962aabf8999f6cd1a9a71e1d' WHERE codigo_ucsm = 1000567890;
-COMMIT;
 
+COMMIT;
 --------------------------------------------------------------------------------
 -- 3. CONSULTAS DE REFERENCIA (solo lectura)
 --------------------------------------------------------------------------------

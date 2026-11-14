@@ -4,7 +4,7 @@ from tkinter import messagebox, ttk
 
 from backend.src.repositorios import investigadores, patentes
 
-from .widgets import Formulario, Tabla, ejecutar_seguro
+from .widgets import Encabezado, Formulario, Tabla, Tarjeta, ejecutar_seguro
 
 CAMPOS = [
     ("n_patente", "Número de patente (PE-123456)", "entry", None),
@@ -20,30 +20,31 @@ CAMPOS = [
 
 class VistaPatentes(ttk.Frame):
     def __init__(self, master, coordinador):
-        super().__init__(master, padding=8)
+        super().__init__(master, padding=(10, 8))
         self.coordinador = coordinador
         self.editando = None                    # numero de patente en edicion
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+        Encabezado(self, "Formato de registro de patente",
+                   "Cada patente debe tener al menos un inventor registrado como investigador.").grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         self.tabla = Tabla(self, [("n", "N.º patente", 100), ("titulo", "Título", 280),
                                   ("fecha", "Registro", 90), ("pais", "País", 70),
                                   ("inventores", "Inventores", 220)], alto=20)
-        self.tabla.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        self.tabla.grid(row=1, column=0, sticky="nsew", padx=(0, 12))
         self.tabla.arbol.bind("<<TreeviewSelect>>", self._al_seleccionar)
 
-        derecha = ttk.Frame(self, padding=8, relief="groove", borderwidth=2)
-        derecha.grid(row=0, column=1, sticky="ns")
-        self.titulo = tk.StringVar()
-        ttk.Label(derecha, textvariable=self.titulo, font=("Helvetica", 11, "bold")).pack(
-            anchor="w", pady=(0, 8))
-        self.form = Formulario(derecha, CAMPOS)
+        self.panel = Tarjeta(self, "")
+        self.panel.grid(row=1, column=1, sticky="ns")
+        self.form = Formulario(self.panel.cuerpo, CAMPOS)
         self.form.pack()
-        botones = ttk.Frame(derecha)
-        botones.pack(pady=(10, 0))
-        ttk.Button(botones, text="Nueva", command=self.nueva).pack(side="left", padx=4)
-        ttk.Button(botones, text="Guardar", command=self.guardar).pack(side="left", padx=4)
-        ttk.Button(botones, text="Eliminar", command=self.eliminar).pack(side="left", padx=4)
+        botones = ttk.Frame(self.panel.cuerpo, style="Tarjeta.TFrame")
+        botones.pack(fill="x", pady=(12, 0))
+        ttk.Button(botones, text="Nueva", command=self.nueva).pack(side="left")
+        ttk.Button(botones, text="Eliminar", style="Peligro.TButton", command=self.eliminar).pack(side="right")
+        ttk.Button(botones, text="Guardar", style="Primario.TButton", command=self.guardar).pack(
+            side="right", padx=8)
         self.nueva()
 
     def refrescar(self):
@@ -59,7 +60,7 @@ class VistaPatentes(ttk.Frame):
         self.form.bloquear(("n_patente",), False)
         self.form.limpiar()
         self.tabla.deseleccionar()
-        self.titulo.set(" Nueva patente ")
+        self.panel.titulo.set("Nueva patente")
 
     def _al_seleccionar(self, _evento=None):
         numero = self.tabla.seleccionada()
@@ -71,7 +72,7 @@ class VistaPatentes(ttk.Frame):
             self.form.poner(datos)
             self.form.bloquear(("n_patente",), True)
             self.editando = numero
-            self.titulo.set(f" Editando patente {numero} ")
+            self.panel.titulo.set(f"Editando patente {numero}")
 
     def guardar(self):
         datos = self.form.valores()

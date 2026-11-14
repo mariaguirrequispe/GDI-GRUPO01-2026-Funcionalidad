@@ -6,10 +6,10 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.db.conexion import (ErrorConexion, ejecutar_consulta, ejecutar_sentencia)  # noqa: E402
-from backend.src import historico, investigadores, patentes  # noqa: E402
+from src.repositorios import historico, investigadores, patentes  # noqa: E402
 from src.repositorios.catalogos import ODS  # noqa: E402
 
-COORD = 1000123434                      # coordinador de ejemplo (Carlos Paredes)
+COORD = 1000123498                      # unico coordinador: Javier Fernando Angulo Osorio
 COD = 2099000001                        # investigador de prueba
 DNI_INV = "99999901"
 DNI_RET = "99999902"                    # persona del coordinador retirado de prueba

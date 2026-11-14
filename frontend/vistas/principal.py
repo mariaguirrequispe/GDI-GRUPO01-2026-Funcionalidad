@@ -1,6 +1,8 @@
-"""Ventana principal del coordinador: barra superior y pestanas de cada modulo."""
+"""Ventana principal del coordinador: cabecera institucional y pestanas de cada modulo."""
+import tkinter as tk
 from tkinter import ttk
 
+from .. import estilos
 from .historico import VistaHistorico
 from .inicio import VistaInicio
 from .investigadores import VistaInvestigadores
@@ -15,18 +17,35 @@ PESTANAS = (("Inicio", VistaInicio), ("Investigadores", VistaInvestigadores),
 class VistaPrincipal(ttk.Frame):
     def __init__(self, master, coordinador, al_salir):
         super().__init__(master)
-        barra = ttk.Frame(self, padding=(10, 6))
-        barra.pack(fill="x")
-        ttk.Label(barra, text=f"Coordinador: {coordinador['nombre']}  ·  {coordinador['funcion']}",
-                  font=("Helvetica", 10, "bold")).pack(side="left")
-        ttk.Button(barra, text="Cerrar sesión", command=al_salir).pack(side="right")
-
+        self._cabecera(coordinador, al_salir)
         self.cuaderno = ttk.Notebook(self)
-        self.cuaderno.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        self.cuaderno.pack(fill="both", expand=True, padx=12, pady=(6, 12))
         for titulo, clase in PESTANAS:
             self.cuaderno.add(clase(self.cuaderno, coordinador), text=titulo)
         self.cuaderno.bind("<<NotebookTabChanged>>", self._al_cambiar)
         self.after_idle(self._al_cambiar)
+
+    def _cabecera(self, coordinador, al_salir):
+        barra = tk.Frame(self, background=estilos.AZUL)
+        barra.pack(fill="x")
+        interior = tk.Frame(barra, background=estilos.AZUL)
+        interior.pack(fill="x", padx=20, pady=12)
+        izquierda = tk.Frame(interior, background=estilos.AZUL)
+        izquierda.pack(side="left")
+        tk.Label(izquierda, text="Repositorios UCSM", background=estilos.AZUL, foreground="white",
+                 font=estilos.fuente(17, True)).pack(anchor="w")
+        tk.Label(izquierda, text="Registro de investigadores y seguimiento de repositorios de investigación",
+                 background=estilos.AZUL, foreground=estilos.TEXTO_CLARO,
+                 font=estilos.fuente(9)).pack(anchor="w")
+        ttk.Button(interior, text="Cerrar sesión", style="Dorado.TButton", command=al_salir).pack(
+            side="right", padx=(18, 0))
+        derecha = tk.Frame(interior, background=estilos.AZUL)
+        derecha.pack(side="right")
+        tk.Label(derecha, text=coordinador["nombre"], background=estilos.AZUL, foreground="white",
+                 font=estilos.fuente(11, True)).pack(anchor="e")
+        tk.Label(derecha, text=coordinador["funcion"], background=estilos.AZUL,
+                 foreground=estilos.DORADO, font=estilos.fuente(9, True)).pack(anchor="e")
+        tk.Frame(self, background=estilos.DORADO, height=3).pack(fill="x")
 
     def _al_cambiar(self, _evento=None):
         """Cada pestana vuelve a leer la base al mostrarse, para no enseñar datos viejos."""

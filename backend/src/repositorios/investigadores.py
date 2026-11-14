@@ -66,6 +66,9 @@ def obtener(codigo):
 
 
 def _datos_comunes(d):
+    intereses = u.partir(d.get("intereses"), con_comas=True)
+    if not intereses:
+        raise u.ErrorOperacion("Debe indicar al menos un interés de investigación.")
     return dict(
         nombres=u.obligatorio(d.get("nombres"), "Los nombres"),
         ap_pat=u.obligatorio(d.get("apellido_paterno"), "El apellido paterno"),
@@ -81,7 +84,7 @@ def _datos_comunes(d):
         resumen=u.obligatorio(d.get("resumen"), "El resumen academico"),
         foto=u.obligatorio(d.get("foto"), "La foto de perfil"),
         ods=list(d.get("ods") or []),
-        intereses=u.partir(d.get("intereses"), con_comas=True),
+        intereses=intereses,
     )
 
 

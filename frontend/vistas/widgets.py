@@ -4,6 +4,8 @@ from tkinter import messagebox, ttk
 
 from backend.src.db.conexion import ErrorConexion
 
+from .. import estilos
+
 
 def ejecutar_seguro(ventana, funcion, *args, **kwargs):
     """Ejecuta funcion y, si falla, muestra el mensaje al usuario. Devuelve (ok, resultado)."""
@@ -16,12 +18,38 @@ def ejecutar_seguro(ventana, funcion, *args, **kwargs):
     return False, None
 
 
+class Tarjeta(tk.Frame):
+    """Panel blanco con borde fino. Los widgets ttk se agregan en .cuerpo (usar los estilos
+    'Tarjeta.TFrame', 'Tarjeta.TLabel', etc.). .titulo es un StringVar con el titulo del panel."""
+
+    def __init__(self, master, titulo=None, padding=14):
+        super().__init__(master, background=estilos.TARJETA, highlightthickness=1,
+                         highlightbackground=estilos.BORDE, borderwidth=0)
+        self.cuerpo = ttk.Frame(self, style="Tarjeta.TFrame", padding=padding)
+        self.cuerpo.pack(fill="both", expand=True)
+        self.titulo = tk.StringVar(value=titulo or "")
+        if titulo is not None:
+            ttk.Label(self.cuerpo, textvariable=self.titulo, style="TarjetaTitulo.TLabel").pack(
+                anchor="w", pady=(0, 10))
+
+
+class Encabezado(ttk.Frame):
+    """Titulo de pestana con una linea de descripcion debajo."""
+
+    def __init__(self, master, titulo, descripcion):
+        super().__init__(master)
+        ttk.Label(self, text=titulo, style="Titulo.TLabel").pack(anchor="w")
+        ttk.Label(self, text=descripcion, style="Suave.TLabel").pack(anchor="w", pady=(0, 2))
+
+
 class Tabla(ttk.Frame):
-    """Treeview con barras de desplazamiento. Las filas se identifican por su primer valor."""
+    """Treeview con barras de desplazamiento y filas alternas. Las filas se identifican
+    por su primer valor."""
 
     def __init__(self, master, columnas=(), alto=12):
         super().__init__(master)
         self.arbol = ttk.Treeview(self, show="headings", height=alto, selectmode="browse")
+        self.arbol.tag_configure("alterna", background=estilos.FILA_ALTERNA)
         vertical = ttk.Scrollbar(self, orient="vertical", command=self.arbol.yview)
         horizontal = ttk.Scrollbar(self, orient="horizontal", command=self.arbol.xview)
         self.arbol.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
@@ -47,12 +75,13 @@ class Tabla(ttk.Frame):
         """con_id=True: el primer valor de cada fila es su identificador (se recupera con
         seleccionada()). Usar con_id=False cuando la primera columna puede repetirse."""
         self.limpiar()
-        for fila in filas:
+        for numero, fila in enumerate(filas):
             valores = ["" if v is None else v for v in fila]
+            etiquetas = ("alterna",) if numero % 2 else ()
             if con_id:
-                self.arbol.insert("", "end", iid=str(fila[0]), values=valores)
+                self.arbol.insert("", "end", iid=str(fila[0]), values=valores, tags=etiquetas)
             else:
-                self.arbol.insert("", "end", values=valores)
+                self.arbol.insert("", "end", values=valores, tags=etiquetas)
 
     def seleccionada(self):
         seleccion = self.arbol.selection()
@@ -63,28 +92,31 @@ class Tabla(ttk.Frame):
 
 
 class Formulario(ttk.Frame):
-    """Formulario generado a partir de una lista de campos.
+    """Formulario generado a partir de una lista de campos (para colocar dentro de una Tarjeta).
     campos: (clave, etiqueta, tipo, extra) con tipo en entry | combo | texto | lista
       combo -> extra = valores; texto -> extra = alto en lineas;
       lista -> extra = [(valor, etiqueta), ...] con seleccion multiple."""
 
     def __init__(self, master, campos):
-        super().__init__(master)
+        super().__init__(master, style="Tarjeta.TFrame")
         self.widgets, self.tipos, self.opciones = {}, {}, {}
         for fila, (clave, etiqueta, tipo, extra) in enumerate(campos):
-            ttk.Label(self, text=etiqueta).grid(row=fila, column=0, sticky="nw", padx=(0, 8), pady=2)
+            ttk.Label(self, text=etiqueta, style="Tarjeta.TLabel").grid(
+                row=fila, column=0, sticky="nw", padx=(0, 10), pady=3)
             if tipo == "combo":
                 w = ttk.Combobox(self, values=list(extra or []), width=38)
             elif tipo == "texto":
                 w = tk.Text(self, width=40, height=extra or 3, wrap="word")
+                estilos.estilo_campo(w, texto=True)
             elif tipo == "lista":
                 self.opciones[clave] = list(extra or [])
                 w = tk.Listbox(self, selectmode="multiple", exportselection=False, width=44,
                                height=min(6, max(3, len(self.opciones[clave]))))
+                estilos.estilo_campo(w)
                 self._llenar_lista(w, self.opciones[clave])
             else:
                 w = ttk.Entry(self, width=40)
-            w.grid(row=fila, column=1, sticky="w", pady=2)
+            w.grid(row=fila, column=1, sticky="w", pady=3)
             self.widgets[clave], self.tipos[clave] = w, tipo
 
     @staticmethod

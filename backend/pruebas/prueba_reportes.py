@@ -6,7 +6,7 @@ Uso:  python backend/pruebas/prueba_reportes.py
 from datetime import date
 
 from _comun import COORD, ErrorConexion, escalar, limpiar, paso, probar, terminar
-from backend.src import reportes
+from src.repositorios import reportes
 from src.repositorios.catalogo_reportes import CONSULTAS
 
 FECHA = date(2000, 1, 1)

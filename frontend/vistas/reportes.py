@@ -5,14 +5,18 @@ from tkinter import messagebox, ttk
 
 from backend.src.repositorios import reportes
 
-from .widgets import Tabla, ejecutar_seguro
+from .. import estilos
+from .widgets import Encabezado, Tabla, ejecutar_seguro
 
 
 class VistaReportes(ttk.Frame):
     def __init__(self, master, coordinador):
-        super().__init__(master, padding=8)
+        super().__init__(master, padding=(10, 8))
         self.coordinador = coordinador
         self.catalogo = reportes.catalogo()
+        Encabezado(self, "Reporte (Dashboard)",
+                   "Consultas del repositorio y generación del reporte con sus indicadores.").pack(
+            anchor="w", pady=(0, 8))
         cuaderno = ttk.Notebook(self)
         cuaderno.pack(fill="both", expand=True)
         self._armar_consultas(cuaderno)
@@ -30,7 +34,7 @@ class VistaReportes(ttk.Frame):
         self.combo.current(0)
         self.combo.pack(side="left")
         self.combo.bind("<<ComboboxSelected>>", lambda _e: self.ejecutar())
-        ttk.Button(barra, text="Ejecutar", command=self.ejecutar).pack(side="left", padx=8)
+        ttk.Button(barra, text="Ejecutar", style="Primario.TButton", command=self.ejecutar).pack(side="left", padx=8)
         self.estado = tk.StringVar()
         ttk.Label(marco, textvariable=self.estado).pack(anchor="w", pady=(6, 4))
         self.resultado = Tabla(marco, alto=18)
@@ -56,7 +60,7 @@ class VistaReportes(ttk.Frame):
         self.fecha = ttk.Entry(barra, width=14)
         self.fecha.insert(0, date.today().isoformat())
         self.fecha.pack(side="left", padx=6)
-        ttk.Button(barra, text="Generar reporte", command=self.generar).pack(side="left")
+        ttk.Button(barra, text="Generar reporte", style="Primario.TButton", command=self.generar).pack(side="left")
 
         cuerpo = ttk.Frame(marco)
         cuerpo.pack(fill="both", expand=True, pady=(10, 0))
@@ -67,6 +71,7 @@ class VistaReportes(ttk.Frame):
         self.emitidos.grid(row=0, column=0, sticky="ns", padx=(0, 10))
         self.emitidos.arbol.bind("<<TreeviewSelect>>", self._al_elegir_emitido)
         self.detalle = tk.Text(cuerpo, wrap="word", state="disabled", width=70)
+        estilos.estilo_campo(self.detalle, texto=True)
         desplazamiento = ttk.Scrollbar(cuerpo, orient="vertical", command=self.detalle.yview)
         self.detalle.configure(yscrollcommand=desplazamiento.set)
         self.detalle.grid(row=0, column=1, sticky="nsew")

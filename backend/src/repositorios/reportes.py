@@ -16,6 +16,40 @@ SECCIONES = [
 ]
 
 
+_SQL_INDICADORES = """
+SELECT (SELECT COUNT(*) FROM investigador)                                        AS investigadores,
+       (SELECT COUNT(DISTINCT escuela_profesional) FROM investigador)             AS escuelas,
+       (SELECT COUNT(*) FROM historico)                                           AS publicaciones,
+       (SELECT COUNT(*) FROM patente)                                             AS patentes,
+       (SELECT COUNT(DISTINCT substring(ods FROM '^ODS ([0-9]+):')) FROM formato_inv_ods) AS ods_vinculados
+"""
+
+_SQL_RANKING_ODS = """
+SELECT MIN(ods) AS ods, COUNT(*) AS total
+FROM formato_inv_ods
+GROUP BY substring(ods FROM '^ODS [0-9]+')
+ORDER BY total DESC, MIN(ods)
+LIMIT 5
+"""
+
+_SQL_TOP_ESCUELAS = """
+SELECT escuela_profesional AS escuela, COUNT(*) AS total
+FROM investigador
+GROUP BY escuela_profesional
+ORDER BY total DESC, escuela_profesional
+LIMIT 3
+"""
+
+
+def indicadores():
+    """Indicadores del Dashboard (Reporte) calculados al momento, para la pagina de inicio:
+    totales, ranking de ODS (top 5) y escuelas con mas investigadores (top 3)."""
+    datos = consultar_dicts(_SQL_INDICADORES)[0]
+    datos["ranking_ods"] = [(f["ods"], f["total"]) for f in consultar_dicts(_SQL_RANKING_ODS)]
+    datos["top_escuelas"] = [(f["escuela"], f["total"]) for f in consultar_dicts(_SQL_TOP_ESCUELAS)]
+    return datos
+
+
 def catalogo():
     """Lista de (id, titulo, usa_join)."""
     return [(c["id"], c["titulo"], c["usa_join"]) for c in CONSULTAS]
