@@ -37,7 +37,7 @@ class VistaReportes(ttk.Frame):
         ttk.Button(barra, text="Ejecutar", style="Primario.TButton", command=self.ejecutar).pack(side="left", padx=8)
         self.estado = tk.StringVar()
         ttk.Label(marco, textvariable=self.estado).pack(anchor="w", pady=(6, 4))
-        self.resultado = Tabla(marco, alto=18)
+        self.resultado = Tabla(marco, alto=8)
         self.resultado.pack(fill="both", expand=True)
 
     def ejecutar(self):
@@ -67,7 +67,7 @@ class VistaReportes(ttk.Frame):
         cuerpo.columnconfigure(1, weight=1)
         cuerpo.rowconfigure(0, weight=1)
         self.emitidos = Tabla(cuerpo, [("fecha", "Reportes emitidos", 110),
-                                       ("coordinador", "Coordinador", 230)], alto=18)
+                                       ("coordinador", "Coordinador", 230)], alto=8)
         self.emitidos.grid(row=0, column=0, sticky="ns", padx=(0, 10))
         self.emitidos.arbol.bind("<<TreeviewSelect>>", self._al_elegir_emitido)
         self.detalle = tk.Text(cuerpo, wrap="word", state="disabled", width=70)

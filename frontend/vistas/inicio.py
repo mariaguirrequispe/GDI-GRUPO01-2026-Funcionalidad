@@ -6,7 +6,7 @@ from tkinter import messagebox, ttk
 from backend.src.repositorios import coordinadores, reportes
 
 from .. import estilos
-from .widgets import Tarjeta, ejecutar_seguro
+from .widgets import Desplazable, Tarjeta, ejecutar_seguro
 
 INDICADORES = (("investigadores", "Investigadores", estilos.AZUL_MEDIO),
                ("escuelas", "Escuelas profesionales", estilos.DORADO),
@@ -17,13 +17,16 @@ INDICADORES = (("investigadores", "Investigadores", estilos.AZUL_MEDIO),
 
 class VistaInicio(ttk.Frame):
     def __init__(self, master, coordinador):
-        super().__init__(master, padding=(14, 10))
+        super().__init__(master)
         self.coordinador = coordinador
-        self.columnconfigure(tuple(range(len(INDICADORES))), weight=1, uniform="ind")
+        zona = Desplazable(self, ajustar_ancho=True, padding=(14, 10))
+        zona.pack(fill="both", expand=True)
+        self.base = base = zona.cuerpo
+        base.columnconfigure(tuple(range(len(INDICADORES))), weight=1, uniform="ind")
 
-        ttk.Label(self, text=f"Bienvenido(a), {coordinador['nombre']}", style="Titulo.TLabel").grid(
+        ttk.Label(base, text=f"Bienvenido(a), {coordinador['nombre']}", style="Titulo.TLabel").grid(
             row=0, column=0, columnspan=len(INDICADORES), sticky="w")
-        ttk.Label(self, style="Suave.TLabel", text=(
+        ttk.Label(base, style="Suave.TLabel", text=(
             f"{coordinador['funcion']}  ·  {coordinador['direccion_adscrita']}  ·  "
             f"en el puesto desde {coordinador['fecha_ocupacion_puesto']}")).grid(
             row=1, column=0, columnspan=len(INDICADORES), sticky="w", pady=(0, 14))
@@ -32,12 +35,12 @@ class VistaInicio(ttk.Frame):
         for columna, (clave, titulo, color) in enumerate(INDICADORES):
             self.valores[clave] = self._tarjeta_indicador(columna, titulo, color)
 
-        self.panel_ods = Tarjeta(self, "Ranking de ODS vinculados a los investigadores")
+        self.panel_ods = Tarjeta(base, "Ranking de ODS vinculados a los investigadores")
         self.panel_ods.grid(row=3, column=0, columnspan=3, sticky="nsew", padx=(0, 8), pady=(14, 0))
-        self.panel_escuelas = Tarjeta(self, "Escuelas con más investigadores")
+        self.panel_escuelas = Tarjeta(base, "Escuelas con más investigadores")
         self.panel_escuelas.grid(row=3, column=3, columnspan=2, sticky="nsew", padx=(8, 0), pady=(14, 0))
 
-        acciones = Tarjeta(self, "Acciones rápidas")
+        acciones = Tarjeta(base, "Acciones rápidas")
         acciones.grid(row=4, column=0, columnspan=len(INDICADORES), sticky="ew", pady=(14, 0))
         fila = ttk.Frame(acciones.cuerpo, style="Tarjeta.TFrame")
         fila.pack(fill="x")
@@ -45,10 +48,9 @@ class VistaInicio(ttk.Frame):
                    command=self.generar_hoy).pack(side="left")
         self.estado = tk.StringVar()
         ttk.Label(fila, textvariable=self.estado, style="TarjetaSuave.TLabel").pack(side="left", padx=14)
-        self.rowconfigure(3, weight=1)
 
     def _tarjeta_indicador(self, columna, titulo, color):
-        tarjeta = tk.Frame(self, background=estilos.TARJETA, highlightthickness=1,
+        tarjeta = tk.Frame(self.base, background=estilos.TARJETA, highlightthickness=1,
                            highlightbackground=estilos.BORDE, borderwidth=0)
         tarjeta.grid(row=2, column=columna, sticky="nsew", padx=5)
         tk.Frame(tarjeta, background=color, height=5).pack(fill="x")
@@ -85,7 +87,7 @@ class VistaInicio(ttk.Frame):
         for ods, total in ranking:
             fila = ttk.Frame(self.panel_ods.cuerpo, style="Tarjeta.TFrame")
             fila.pack(fill="x", pady=3)
-            ttk.Label(fila, text=ods, style="Tarjeta.TLabel", width=46).pack(side="left")
+            ttk.Label(fila, text=ods, style="Tarjeta.TLabel", width=34).pack(side="left")
             ttk.Progressbar(fila, style="Barra.Horizontal.TProgressbar", maximum=maximo, value=total,
                             length=140).pack(side="left", padx=8)
             ttk.Label(fila, text=str(total), style="TarjetaTitulo.TLabel").pack(side="left")

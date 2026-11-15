@@ -5,7 +5,7 @@ from tkinter import messagebox, ttk
 from backend.src.repositorios import historico
 from backend.src.repositorios.catalogos import CATEGORIAS, IDIOMAS, TIPOS_PUBLICACION
 
-from .widgets import Encabezado, Formulario, Tabla, Tarjeta, ejecutar_seguro
+from .widgets import Encabezado, Formulario, PanelFormulario, Tabla, ejecutar_seguro
 
 CAMPOS = [
     ("title", "Título", "entry", None),
@@ -49,16 +49,15 @@ class VistaHistorico(ttk.Frame):
         self.tabla = Tabla(izquierda, [("uuid", "UUID", 110), ("titulo", "Título", 330),
                                        ("anio", "Año", 50), ("tipo", "Tipo", 100),
                                        ("idioma", "Idioma", 70), ("categoria", "Categoría", 80)],
-                           alto=20)
+                           alto=8)
         self.tabla.grid(row=1, column=0, sticky="nsew")
         self.tabla.arbol.bind("<<TreeviewSelect>>", self._al_seleccionar)
 
-        self.panel = Tarjeta(self, "")
+        self.panel = PanelFormulario(self)
         self.panel.grid(row=1, column=1, sticky="ns")
         self.form = Formulario(self.panel.cuerpo, CAMPOS)
         self.form.pack()
-        botones = ttk.Frame(self.panel.cuerpo, style="Tarjeta.TFrame")
-        botones.pack(fill="x", pady=(12, 0))
+        botones = self.panel.pie
         ttk.Button(botones, text="Nueva", command=self.nueva).pack(side="left")
         ttk.Button(botones, text="Eliminar", style="Peligro.TButton", command=self.eliminar).pack(side="right")
         ttk.Button(botones, text="Guardar", style="Primario.TButton", command=self.guardar).pack(

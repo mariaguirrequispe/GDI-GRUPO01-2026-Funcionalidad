@@ -5,7 +5,7 @@ from tkinter import messagebox, ttk
 from backend.src.repositorios import investigadores
 from backend.src.repositorios.catalogos import GENEROS, ODS
 
-from .widgets import Encabezado, Formulario, Tabla, Tarjeta, ejecutar_seguro
+from .widgets import Encabezado, Formulario, PanelFormulario, Tabla, ejecutar_seguro
 
 CAMPOS = [
     ("dni", "DNI", "entry", None),
@@ -37,7 +37,7 @@ class VistaInvestigadores(ttk.Frame):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
         Encabezado(self, "Formato de registro de investigador",
-                   "Registre, modifique o elimine los investigadores de la universidad.").grid(
+                   "Cargue y valide los formatos de investigadores cuya solicitud ya aprobó el Director de Investigación.").grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         izquierda = ttk.Frame(self)
@@ -53,16 +53,15 @@ class VistaInvestigadores(ttk.Frame):
         ttk.Button(barra, text="Buscar", command=self.refrescar).pack(side="left")
         self.tabla = Tabla(izquierda, [("codigo", "Código", 90), ("nombre", "Investigador", 230),
                                        ("escuela", "Escuela", 170), ("correo", "Correo", 190),
-                                       ("celular", "Celular", 80)], alto=20)
+                                       ("celular", "Celular", 80)], alto=8)
         self.tabla.grid(row=1, column=0, sticky="nsew")
         self.tabla.arbol.bind("<<TreeviewSelect>>", self._al_seleccionar)
 
-        self.panel = Tarjeta(self, "")
+        self.panel = PanelFormulario(self)
         self.panel.grid(row=1, column=1, sticky="ns")
         self.form = Formulario(self.panel.cuerpo, CAMPOS)
         self.form.pack()
-        botones = ttk.Frame(self.panel.cuerpo, style="Tarjeta.TFrame")
-        botones.pack(fill="x", pady=(12, 0))
+        botones = self.panel.pie
         ttk.Button(botones, text="Nuevo", command=self.nuevo).pack(side="left")
         ttk.Button(botones, text="Eliminar", style="Peligro.TButton", command=self.eliminar).pack(side="right")
         ttk.Button(botones, text="Guardar", style="Primario.TButton", command=self.guardar).pack(

@@ -33,6 +33,73 @@ class Tarjeta(tk.Frame):
                 anchor="w", pady=(0, 10))
 
 
+class Desplazable(ttk.Frame):
+    """Zona con barra de desplazamiento vertical y rueda del raton: lo que no cabe en la
+    ventana se desplaza en vez de cortarse. Los widgets se colocan dentro de .cuerpo.
+    ajustar_ancho=True: el contenido se estira al ancho disponible (paginas completas);
+    False: el ancho se adapta al contenido (formularios)."""
+
+    def __init__(self, master, fondo=estilos.FONDO, estilo="TFrame", padding=0, ajustar_ancho=False):
+        super().__init__(master)
+        self._ajustar_ancho = ajustar_ancho
+        self.lienzo = tk.Canvas(self, background=fondo, highlightthickness=0, borderwidth=0, height=120)
+        barra = ttk.Scrollbar(self, orient="vertical", command=self.lienzo.yview)
+        self.lienzo.configure(yscrollcommand=barra.set)
+        barra.pack(side="right", fill="y")
+        self.lienzo.pack(side="left", fill="both", expand=True)
+        self.cuerpo = ttk.Frame(self.lienzo, style=estilo, padding=padding)
+        self._ventana = self.lienzo.create_window((0, 0), window=self.cuerpo, anchor="nw")
+        self.cuerpo.bind("<Configure>", self._al_cambiar_cuerpo)
+        self.lienzo.bind("<Configure>", self._al_cambiar_lienzo)
+        for secuencia in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.bind_all(secuencia, self._rueda, add="+")
+
+    def _al_cambiar_cuerpo(self, evento):
+        self.lienzo.configure(scrollregion=self.lienzo.bbox("all"))
+        if not self._ajustar_ancho:
+            self.lienzo.configure(width=evento.width)
+
+    def _al_cambiar_lienzo(self, evento):
+        if self._ajustar_ancho:
+            self.lienzo.itemconfigure(self._ventana, width=evento.width)
+
+    def _rueda(self, evento):
+        """Desplaza solo si el puntero esta sobre esta zona (y no sobre una lista o texto,
+        que se desplazan por su cuenta)."""
+        try:
+            if not self.winfo_exists():
+                return
+            destino = self.winfo_containing(evento.x_root, evento.y_root)
+        except (tk.TclError, KeyError):          # p. ej. la lista desplegable de un combo
+            return
+        if isinstance(destino, (tk.Listbox, tk.Text)):
+            return
+        while destino is not None and destino is not self:
+            destino = destino.master
+        if destino is None or self.lienzo.yview() == (0.0, 1.0):
+            return
+        sentido = -1 if (evento.num == 4 or evento.delta > 0) else 1
+        self.lienzo.yview_scroll(sentido * 3, "units")
+
+
+class PanelFormulario(tk.Frame):
+    """Tarjeta para formularios largos: titulo arriba, centro con desplazamiento (.cuerpo)
+    y pie fijo para los botones (.pie), que siempre quedan a la vista."""
+
+    def __init__(self, master):
+        super().__init__(master, background=estilos.TARJETA, highlightthickness=1,
+                         highlightbackground=estilos.BORDE, borderwidth=0)
+        self.titulo = tk.StringVar()
+        ttk.Label(self, textvariable=self.titulo, style="TarjetaTitulo.TLabel").pack(
+            anchor="w", padx=14, pady=(12, 4))
+        self.zona = Desplazable(self, fondo=estilos.TARJETA, estilo="Tarjeta.TFrame", padding=(14, 6))
+        self.zona.pack(fill="both", expand=True)
+        self.cuerpo = self.zona.cuerpo
+        tk.Frame(self, background=estilos.BORDE, height=1).pack(fill="x")
+        self.pie = ttk.Frame(self, style="Tarjeta.TFrame", padding=(14, 10))
+        self.pie.pack(fill="x")
+
+
 class Encabezado(ttk.Frame):
     """Titulo de pestana con una linea de descripcion debajo."""
 
@@ -46,7 +113,7 @@ class Tabla(ttk.Frame):
     """Treeview con barras de desplazamiento y filas alternas. Las filas se identifican
     por su primer valor."""
 
-    def __init__(self, master, columnas=(), alto=12):
+    def __init__(self, master, columnas=(), alto=8):
         super().__init__(master)
         self.arbol = ttk.Treeview(self, show="headings", height=alto, selectmode="browse")
         self.arbol.tag_configure("alterna", background=estilos.FILA_ALTERNA)
@@ -104,18 +171,21 @@ class Formulario(ttk.Frame):
             ttk.Label(self, text=etiqueta, style="Tarjeta.TLabel").grid(
                 row=fila, column=0, sticky="nw", padx=(0, 10), pady=3)
             if tipo == "combo":
-                w = ttk.Combobox(self, values=list(extra or []), width=38)
+                w = ttk.Combobox(self, values=list(extra or []), width=34)
+                # la rueda del raton desplaza el formulario, no cambia el valor del combo
+                for secuencia in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                    w.bind(secuencia, lambda _e: "break")
             elif tipo == "texto":
-                w = tk.Text(self, width=40, height=extra or 3, wrap="word")
+                w = tk.Text(self, width=36, height=extra or 3, wrap="word")
                 estilos.estilo_campo(w, texto=True)
             elif tipo == "lista":
                 self.opciones[clave] = list(extra or [])
-                w = tk.Listbox(self, selectmode="multiple", exportselection=False, width=44,
+                w = tk.Listbox(self, selectmode="multiple", exportselection=False, width=40,
                                height=min(6, max(3, len(self.opciones[clave]))))
                 estilos.estilo_campo(w)
                 self._llenar_lista(w, self.opciones[clave])
             else:
-                w = ttk.Entry(self, width=40)
+                w = ttk.Entry(self, width=36)
             w.grid(row=fila, column=1, sticky="w", pady=3)
             self.widgets[clave], self.tipos[clave] = w, tipo
 
